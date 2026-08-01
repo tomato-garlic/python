@@ -35,14 +35,14 @@ MASKER_ITD_US: int = 0          # マスカーのITD (µs)
 TARGET_SL: float = 40.0         # マスカーの目標SL (Sensation Level または Stimulus Level)
 # 交番刺激パターン (T-M-T-M-...-S)
 # N_TEST の回数に応じて全体のセグメント数が自動的に決定されます。
-N_TEST: int = 6
+N_TEST: int = 3
 N_MASKER: int = N_TEST - 1
 N_SILENCE: int = 1
 
 # ---- Phase 2: 1-up/1-down 適応法 (Experiment C 準拠) ----
-ADAPTIVE_INITIAL_STEP_SIZE: float = 6.0
-ADAPTIVE_SECOND_STEP_SIZE: float = 3.0
-ADAPTIVE_FINAL_STEP_SIZE: float = 0.5
+ADAPTIVE_INITIAL_STEP_SIZE: float = 12.0
+ADAPTIVE_SECOND_STEP_SIZE: float = 6.0
+ADAPTIVE_FINAL_STEP_SIZE: float = 3.0
 ADAPTIVE_REVERSAL_TRIGGER_1: int = 2
 ADAPTIVE_REVERSAL_TRIGGER_2: int = 4
 ADAPTIVE_MAX_REVERSALS: int = 10
