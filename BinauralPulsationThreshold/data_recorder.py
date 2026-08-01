@@ -31,6 +31,7 @@ class DataRecorder:
         "itd_us",
         "track",
         "trial_no",
+        "session_trial_no",
         "level_db",
         "response",
         "is_reversal",
@@ -55,9 +56,14 @@ class DataRecorder:
         level_db: float,
         response: str,
         is_reversal: bool,
+        session_trial_no: int | None = None,
     ) -> None:
         """
         1試行のデータを追加する。
+
+        trial_no はトラック（ITD条件）内の連番、session_trial_no は
+        セッション通しの連番。インターリーブ実行では後者が提示時刻を表し、
+        判断基準のドリフト診断に使う。
         """
         self._rows.append({
             "subject_id": subject_id,
@@ -69,6 +75,7 @@ class DataRecorder:
             "itd_us": itd_us,
             "track": track,
             "trial_no": trial_no,
+            "session_trial_no": session_trial_no if session_trial_no is not None else trial_no,
             "level_db": round(level_db, 2),
             "response": response,
             "is_reversal": is_reversal,

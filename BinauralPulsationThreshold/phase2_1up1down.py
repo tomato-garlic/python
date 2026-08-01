@@ -50,14 +50,16 @@ class AdaptiveTrack1Up1Down:
 
     def get_threshold(self) -> float:
         """
-        最後の6回分（インデックス4〜9）の算術平均を閾値として算出する
+        最後の N 回の反転レベルの算術平均を閾値として算出する。
+
+        インターリーブ実行では、他条件の終了を待つ間に反転が規定回数を超えて
+        蓄積される。全条件が同時刻に終了するため「最後の N 回」を採ることで
+        条件間の推定の時間窓が揃う。
         """
-        if len(self.reversal_levels) < config.ADAPTIVE_MAX_REVERSALS:
-            # 万が一途中で終わった場合のフォールバック
-            return float(np.mean(self.reversal_levels)) if self.reversal_levels else self.current_target_level
-            
-        start_idx = config.ADAPTIVE_MAX_REVERSALS - config.ADAPTIVE_NUM_REVERSALS_FOR_MEAN
-        target_revs = self.reversal_levels[start_idx:]
+        if not self.reversal_levels:
+            return self.current_target_level
+
+        target_revs = self.reversal_levels[-config.ADAPTIVE_NUM_REVERSALS_FOR_MEAN:]
         return float(np.mean(target_revs))
 
     def record_response(self, is_continuous: bool, trial_global: int) -> None:
@@ -102,23 +104,25 @@ class AdaptiveTrack1Up1Down:
 
         # Step 4: 終了判定とステータス更新
         self.previous_direction = current_direction
-        
+
         if self.reversal_count >= config.ADAPTIVE_MAX_REVERSALS:
             self._finished = True
-        else:
-            self.current_target_level = float(np.clip(
-                next_target_level, 
-                config.TEST_MIN_LEVEL, 
-                config.TEST_MAX_LEVEL
-            ))
+
+        # 規定反転数に達した後も、他条件の終了まで提示が続く。
+        # レベルを固定すると同一刺激の反復提示になるため、更新は常に行う。
+        self.current_target_level = float(np.clip(
+            next_target_level,
+            config.TEST_MIN_LEVEL,
+            config.TEST_MAX_LEVEL
+        ))
 
 
-def run_1up1down_condition(
+def run_1up1down_interleaved(
     win: visual.Window,
     masker_spectrum_level_db: float,
-    itd_seconds: float,
+    itd_list_us: list[int],
+    itd_list_sec: list[float],
     subject_id: str,
-    itd_label_us: int,
     recorder,
     sl_reference_db: float,
     test_freq: float,
@@ -126,17 +130,26 @@ def run_1up1down_condition(
     mod_type: str,
     masker_itd_sec: float,
     masker_itd_us: int,
-) -> tuple[float, list[float]]:
+) -> dict[int, tuple[float, list[float]]]:
     """
-    1つのITD条件について、1-up 1-down 適応法を実行する。
+    全ITD条件のトラックをインターリーブして実行する。
+
+    各トラックは独立に 1-up 1-down 規則で進むが、提示順は毎ラウンド
+    シャッフルされ、全条件が規定反転数に達するまで全トラックを回し続ける。
+    これにより tone ITD と時刻の交絡が解け、判断基準が実験中に変動しても
+    全条件に共通に乗るため、条件間の差では相殺される。
     """
-    track = AdaptiveTrack1Up1Down(masker_spectrum_level_db)
+    tracks = {
+        itd_us: AdaptiveTrack1Up1Down(masker_spectrum_level_db)
+        for itd_us in itd_list_us
+    }
+    itd_sec_map = dict(zip(itd_list_us, itd_list_sec))
 
     # ── 教示画面 ──
+    # 条件が被験者に分かると基準が条件依存になるため、ITD は表示しない。
     instr = visual.TextStim(
         win,
         text=(
-            f"ITD = {itd_label_us} µs\n\n"
             f"Continuous (連続) と聴こえたら   → [{config.KEY_CONTINUOUS.upper()}] キー\n"
             f"Interrupted (断続) と聴こえたら → [{config.KEY_INTERRUPTED.upper()}] キー\n\n"
             "[スペース] で開始"
@@ -148,79 +161,86 @@ def run_1up1down_condition(
     event.waitKeys(keyList=["space"])
 
     prompt = visual.TextStim(win, text="", height=0.08, color="white")
-    trial_global = 0
+    session_trial_no = 0
 
-    while not track.is_finished():
-        trial_global += 1
-        level = track.get_current_level()
+    while not all(t.is_finished() for t in tracks.values()):
+        # 1ラウンド = 全ITDを1回ずつ、順序はシャッフル
+        round_order = list(itd_list_us)
+        random.shuffle(round_order)
 
-        # ── 刺激生成・再生 ──
-        stim_array = build_alternating_stimulus(
-            masker_spectrum_level_db, level, itd_seconds,
-            test_freq=test_freq, mod_freq=mod_freq, mod_type=mod_type, masker_itd_sec=masker_itd_sec
-        )
-        snd = sound.Sound(
-            value=stim_array,
-            sampleRate=config.SAMPLE_RATE,
-            stereo=True,
-        )
+        for itd_us in round_order:
+            track = tracks[itd_us]
+            session_trial_no += 1
+            level = track.get_current_level()
 
-        prompt.text = "聴いてください..."
-        prompt.draw()
-        win.flip()
+            # ── 刺激生成・再生 ──
+            stim_array = build_alternating_stimulus(
+                masker_spectrum_level_db, level, itd_sec_map[itd_us],
+                test_freq=test_freq, mod_freq=mod_freq, mod_type=mod_type, masker_itd_sec=masker_itd_sec
+            )
+            snd = sound.Sound(
+                value=stim_array,
+                sampleRate=config.SAMPLE_RATE,
+                stereo=True,
+            )
 
-        event.clearEvents()
-        snd.play()
-        stim_duration = stim_array.shape[0] / config.SAMPLE_RATE
-        core.wait(stim_duration)
-        snd.stop()
-        snd = None
+            prompt.text = "聴いてください..."
+            prompt.draw()
+            win.flip()
 
-        # ── 応答収集 ──
-        prompt.text = f"Continuous (連続) → [{config.KEY_CONTINUOUS.upper()}]     Interrupted (断続) → [{config.KEY_INTERRUPTED.upper()}]"
-        prompt.draw()
-        win.flip()
+            event.clearEvents()
+            snd.play()
+            stim_duration = stim_array.shape[0] / config.SAMPLE_RATE
+            core.wait(stim_duration)
+            snd.stop()
+            snd = None
 
-        keys = event.waitKeys(
-            keyList=[config.KEY_CONTINUOUS, config.KEY_INTERRUPTED, "escape"],
-        )
+            # ── 応答収集 ──
+            prompt.text = f"Continuous (連続) → [{config.KEY_CONTINUOUS.upper()}]     Interrupted (断続) → [{config.KEY_INTERRUPTED.upper()}]"
+            prompt.draw()
+            win.flip()
 
-        if keys[0] == "escape":
-            win.close()
-            core.quit()
-        else:
-            is_continuous = (keys[0] == config.KEY_CONTINUOUS)
+            keys = event.waitKeys(
+                keyList=[config.KEY_CONTINUOUS, config.KEY_INTERRUPTED, "escape"],
+            )
 
-        # ── トラック更新 ──
-        track.record_response(is_continuous, trial_global)
+            if keys[0] == "escape":
+                win.close()
+                core.quit()
+            else:
+                is_continuous = (keys[0] == config.KEY_CONTINUOUS)
 
-        # ── データ記録 ──
-        last = track.history[-1]
-        recorder.add_trial(
-            subject_id=subject_id,
-            sl_reference_db=sl_reference_db,
-            test_freq=test_freq,
-            mod_freq=mod_freq,
-            mod_type=mod_type,
-            masker_itd_us=masker_itd_us,
-            itd_us=itd_label_us,
-            track="1up1down",
-            trial_no=last["trial_global"],
-            level_db=last["level_db"],
-            response=last["response"],
-            is_reversal=last["is_reversal"],
-        )
+            # ── トラック更新 ──
+            track.record_response(is_continuous, track.trial_no + 1)
 
-        # ── 短インターバル ──
-        prompt.text = ""
-        prompt.draw()
-        win.flip()
-        core.wait(0.3)
+            # ── データ記録 ──
+            last = track.history[-1]
+            recorder.add_trial(
+                subject_id=subject_id,
+                sl_reference_db=sl_reference_db,
+                test_freq=test_freq,
+                mod_freq=mod_freq,
+                mod_type=mod_type,
+                masker_itd_us=masker_itd_us,
+                itd_us=itd_us,
+                track="1up1down",
+                trial_no=last["trial_global"],
+                session_trial_no=session_trial_no,
+                level_db=last["level_db"],
+                response=last["response"],
+                is_reversal=last["is_reversal"],
+            )
 
-    final_threshold = track.get_threshold()
-    reversal_levels = track.reversal_levels
+            # ── 短インターバル ──
+            prompt.text = ""
+            prompt.draw()
+            win.flip()
+            core.wait(0.3)
 
-    return final_threshold, reversal_levels
+    return {
+        itd_us: (track.get_threshold(), track.reversal_levels)
+        for itd_us, track in tracks.items()
+    }
 
 if __name__ == "__main__":
     print("=== 1-up/1-down 単体シミュレーション ===")
@@ -233,10 +253,10 @@ if __name__ == "__main__":
         trial += 1
         
         # 適当なPsychometric function (例: -45 dB を閾値とする)
-        # level が -45 より大きければ連続して聞こえやすい
+        # level が -45 より小さければ（テスト音が弱ければ）連続して聞こえやすい
         level = track.get_current_level()
-        prob_continuous = 1.0 / (1.0 + np.exp(-0.5 * (level - (-45.0))))
-        
+        prob_continuous = 1.0 / (1.0 + np.exp(0.5 * (level - (-45.0))))
+
         is_continuous = rng.random() < prob_continuous
         track.record_response(is_continuous, trial)
 

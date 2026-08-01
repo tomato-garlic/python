@@ -7,12 +7,11 @@ main.py
 実行フロー:
   1. 初期ダイアログ: 被験者ID, ITDリスト入力
   2. Phase 1: 1kHz聴取閾値測定 → マスカーレベル算出
-  3. Phase 2: 各ITD条件をランダム順で提示 → 1-up 1-down 適応法
+  3. Phase 2: 全ITD条件をインターリーブして提示 → 1-up 1-down 適応法
   4. CSV保存 → 終了
 """
 
 import os
-import random
 import sys
 
 # Windows/Mac 両環境でコンソール出力の文字化けを防ぐ
@@ -25,7 +24,7 @@ from psychopy import visual, core, gui, event, sound, prefs
 
 import config
 from phase1_threshold import run_phase1
-from phase2_1up1down import run_1up1down_condition
+from phase2_1up1down import run_1up1down_interleaved
 from data_recorder import DataRecorder
 import plot_results
 
@@ -147,31 +146,25 @@ def main() -> None:
     # ユーザー要望: Target_SL + Phase1閾値
     masker_spectrum_level_db = sl_reference_db + config.TARGET_SL
 
-    # ── Phase 2: ITD条件をランダム順に実施 ──
-    itd_order = list(range(len(itd_list_us)))
-    random.shuffle(itd_order)
+    # ── Phase 2: 全ITD条件をインターリーブして実施 ──
+    results = run_1up1down_interleaved(
+        win=win,
+        masker_spectrum_level_db=masker_spectrum_level_db,
+        itd_list_us=itd_list_us,
+        itd_list_sec=itd_list_sec,
+        subject_id=subject_id,
+        recorder=recorder,
+        sl_reference_db=sl_reference_db,
+        test_freq=test_freq,
+        mod_freq=mod_freq,
+        mod_type=mod_type,
+        masker_itd_sec=masker_itd_sec,
+        masker_itd_us=masker_itd,
+    )
 
     final_thresholds: list[dict] = []
 
-    for idx in itd_order:
-        itd_us = itd_list_us[idx]
-        itd_sec = itd_list_sec[idx]
-
-        final_thr, reversal_levels = run_1up1down_condition(
-            win=win,
-            masker_spectrum_level_db=masker_spectrum_level_db,
-            itd_seconds=itd_sec,
-            subject_id=subject_id,
-            itd_label_us=itd_us,
-            recorder=recorder,
-            sl_reference_db=sl_reference_db,
-            test_freq=test_freq,
-            mod_freq=mod_freq,
-            mod_type=mod_type,
-            masker_itd_sec=masker_itd_sec,
-            masker_itd_us=masker_itd,
-        )
-
+    for itd_us, (final_thr, reversal_levels) in results.items():
         recorder.update_block_metadata(
             itd_us=itd_us,
             threshold_db=final_thr,
