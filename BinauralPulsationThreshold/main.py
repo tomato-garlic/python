@@ -51,7 +51,7 @@ def show_dialog() -> tuple[str, list[int], float | None, str, float, float, str,
 
     dlg = gui.Dlg(title="Pulsation Threshold Measurement")
     dlg.addField("Subject ID:", "P01")
-    dlg.addField("ITD list (us, comma-separated):", "0, 200, 400")
+    dlg.addField("ITD list (us, comma-separated):", "-600, -400, -200, 0, 200, 400, 600")
     dlg.addField("SL reference (dB FS, blank = run Phase 1):", "")
     dlg.addField("Sound Device:", choices=["default"] + [d for d in device_names if d != "default"])
     dlg.addField("Test frequency (Hz):", config.TEST_FREQ)

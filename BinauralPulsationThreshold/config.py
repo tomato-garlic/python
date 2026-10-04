@@ -13,12 +13,12 @@ N_CHANNELS: int = 2             # ステレオ (左=0, 右=1)
 # ---- 刺激音 共通 ----
 RAMP_DURATION: float = 0.020    # コサインテーパー長さ (秒)
 
-# ---- Phase 1: 1kHz閾値測定 ----
-PHASE1_FREQ: float = 1000.0     # 純音周波数 (Hz)
+# ---- Phase 1: 純音閾値測定 ----
+PHASE1_FREQ: float = 500.0     # 純音周波数 (Hz)
 PHASE1_DURATION: float = 0.500  # 1呈示あたりの長さ (秒)
-PHASE1_START_LEVEL: float = -20.0   # 開始レベル (dB FS, フルスケール基準)
-PHASE1_STEP_LARGE: float = 2.0      # 初期ステップ幅 (dB)
-PHASE1_STEP_SMALL: float = 1.0      # 収束後ステップ幅 (dB)
+PHASE1_START_LEVEL: float = -40.0   # 開始レベル (dB FS, フルスケール基準)
+PHASE1_STEP_LARGE: float = 6.0      # 初期ステップ幅 (dB)
+PHASE1_STEP_SMALL: float = 3.0      # 収束後ステップ幅 (dB)
 PHASE1_STEP_CHANGE_REVERSALS: int = 1   # ステップ縮小に必要な反転回数
 PHASE1_TOTAL_REVERSALS: int = 4     # Phase1終了に必要な反転回数
 PHASE1_MIN_LEVEL: float = -100.0    # 提示レベル下限 (dB FS)
@@ -32,7 +32,7 @@ TEST_FREQ: float = 500.0        # テスト信号周波数 (Hz)
 MOD_FREQ: float = 250.0         # 変調周波数 (Hz)
 MOD_TYPE: str = "None"    # 変調タイプ ("None", "SAM", "Transposed")
 MASKER_ITD_US: int = 0          # マスカーのITD (µs)
-TARGET_SL: float = 40.0         # マスカーの目標SL (Sensation Level または Stimulus Level)
+TARGET_SL: float = 30.0         # マスカーの目標SL (Sensation Level または Stimulus Level)
 # 交番刺激パターン (T-M-T-M-...-S)
 # N_TEST の回数に応じて全体のセグメント数が自動的に決定されます。
 N_TEST: int = 3
